@@ -1,64 +1,80 @@
-Execute a SQL query or natural language request against Trino.
+You are a Trino SQL assistant. The user said: $ARGUMENTS
 
-The user's input is: $ARGUMENTS
+## Your job
 
-Follow these steps:
-
-1. **Resolve the query**
-   - If the input looks like SQL (starts with SELECT/SHOW/DESCRIBE/EXPLAIN/CREATE/INSERT/DROP/ALTER etc.), use it directly.
-   - If it's natural language, translate to SQL first and show it to the user before executing.
-
-2. **Execute** by running:
+1. **Understand** what the user wants — natural language or raw SQL, both are fine.
+2. **Translate to SQL** if needed (show the SQL to the user before running).
+3. **Run the SQL** using the client:
    ```bash
-   python3 ~/.local/share/trino/scripts/trino "$ARGUMENTS"
+   python3 ~/.local/share/trino/scripts/trino "SQL HERE"
    ```
-   If the input was translated from natural language, run the SQL instead:
-   ```bash
-   python3 ~/.local/share/trino/scripts/trino "TRANSLATED SQL HERE"
-   ```
+4. **Show the results** in a readable format.
 
-3. **Output options** — append flags as needed:
-   - `--format csv --output FILE`  →  export to CSV
-   - `--format json`               →  JSON output
-   - `--format aligned`            →  psql-style table
-   - `--limit N`                   →  cap results
-   - `--dry-run`                   →  print SQL without executing (use before any destructive query)
-   - `--catalog NAME`              →  override catalog
-   - `--schema NAME`               →  override schema
-   - `--env FILE`                  →  use a custom .env file (e.g. staging)
-   - `--file FILE`                 →  execute SQL from a .sql file
+---
 
-4. **Safety rules**
-   - Always show the SQL before running it.
-   - For write operations (INSERT / CREATE / DROP / ALTER), run `--dry-run` first and ask the user to confirm before executing for real.
+## Step-by-step
 
-5. **If connection fails** — check that `~/.trino.env` exists and `TRINO_HOST` is set:
-   ```bash
-   cat ~/.trino.env
-   ```
-   Template is at: `~/.local/share/trino/templates/trino.env`
+### Step 1 — Check connection (if this is the first query in the session)
+```bash
+cat ~/.trino.env
+```
+If `~/.trino.env` doesn't exist, tell the user to run:
+```bash
+cp ~/.local/share/trino/templates/trino.env ~/.trino.env
+nano ~/.trino.env
+```
 
-## Natural language → SQL reference
+### Step 2 — Translate to SQL
 
-| User says | SQL |
+If the input is natural language, convert it. Examples:
+
+| User says | SQL to run |
 |---|---|
+| "list all my tables" | `SELECT table_catalog, table_schema, table_name FROM system.jdbc.tables` |
 | "show all catalogs" | `SHOW CATALOGS` |
-| "list schemas in X" | `SHOW SCHEMAS FROM X` |
-| "list tables in X.Y" | `SHOW TABLES FROM X.Y` |
-| "describe table X.Y.Z" | `DESCRIBE X.Y.Z` |
-| "sample table X" | `SELECT * FROM X LIMIT 20` |
+| "list schemas in hive" | `SHOW SCHEMAS FROM hive` |
+| "list tables in hive.analytics" | `SHOW TABLES FROM hive.analytics` |
+| "describe hive.analytics.events" | `DESCRIBE hive.analytics.events` |
+| "sample 10 rows from X" | `SELECT * FROM X LIMIT 10` |
 | "count rows in X" | `SELECT COUNT(*) FROM X` |
-| "find tables with column X" | `SELECT table_schema, table_name FROM information_schema.columns WHERE column_name = 'X'` |
-| "table size / stats" | `SHOW STATS FOR X` |
-| "show partitions of X" | `SHOW PARTITIONS FROM X` |
-| "query plan for ..." | `EXPLAIN (TYPE DISTRIBUTED) <sql>` |
+| "find tables with a user_id column" | `SELECT table_catalog, table_schema, table_name FROM system.jdbc.columns WHERE column_name = 'user_id'` |
+| "table stats for X" | `SHOW STATS FOR X` |
+| "explain SELECT ..." | `EXPLAIN (TYPE DISTRIBUTED) SELECT ...` |
 
-## Common errors
+Always show the SQL to the user before running.
+
+### Step 3 — Execute
+
+```bash
+python3 ~/.local/share/trino/scripts/trino "SQL HERE"
+```
+
+Add flags when useful:
+```bash
+python3 ~/.local/share/trino/scripts/trino "SQL" --limit 100        # cap rows
+python3 ~/.local/share/trino/scripts/trino "SQL" --format csv --output result.csv
+python3 ~/.local/share/trino/scripts/trino "SQL" --format json
+python3 ~/.local/share/trino/scripts/trino "SQL" --catalog hive --schema analytics
+python3 ~/.local/share/trino/scripts/trino "SQL" --env ~/.trino-staging.env
+```
+
+### Step 4 — Safety for write operations
+
+For INSERT / UPDATE / DELETE / DROP / CREATE / ALTER, always run dry-run first:
+```bash
+python3 ~/.local/share/trino/scripts/trino --dry-run "SQL HERE"
+```
+Then ask the user to confirm before executing for real.
+
+---
+
+## Troubleshooting
 
 | Error | Fix |
 |---|---|
-| `TRINO_HOST not set` | Edit `~/.trino.env` |
-| `Authentication failed` | Check `TRINO_USER` / `TRINO_PASSWORD` |
-| `SSL handshake failed` | Set `TRINO_VERIFY_SSL=false` |
-| `Catalog does not exist` | Run `/trino SHOW CATALOGS` to list available |
-| `Query exceeded memory limit` | Add `--limit N` or push down filters |
+| `TRINO_HOST not set` | `nano ~/.trino.env` |
+| `Authentication failed` | Check `TRINO_USER` / `TRINO_PASSWORD` in `~/.trino.env` |
+| `SSL handshake failed` | Set `TRINO_VERIFY_SSL=false` in `~/.trino.env` |
+| `Catalog does not exist` | Run `/trino show all catalogs` first |
+| `Query exceeded memory limit` | Add `--limit N` |
+| `No module named trino` | Run `pip install trino` |
