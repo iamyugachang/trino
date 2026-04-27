@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  trino:
+    image: trinodb/trino:latest
+    container_name: trino-test
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config/config.properties:/etc/trino/config.properties
+      - ./config/jvm.config:/etc/trino/jvm.config
+      - ./config/catalog/tpch.properties:/etc/trino/catalog/tpch.properties
+      - ./config/catalog/memory.properties:/etc/trino/catalog/memory.properties
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s

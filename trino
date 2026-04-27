@@ -1,0 +1,18 @@
+#!/usr/bin/env python3
+"""
+/trino — SQL client for Trino.
+
+Usage:
+  ./trino "SHOW CATALOGS"
+  ./trino "SELECT * FROM tpch.tiny.nation LIMIT 5"
+  ./trino --format csv "SELECT * FROM tpch.tiny.orders" --output orders.csv
+  ./trino --dry-run "DROP TABLE hive.myschema.old_data"
+  ./trino --env ~/.trino-staging.env "SHOW SCHEMAS FROM hive"
+"""
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from trino_client import main
+
+if __name__ == "__main__":
+    main()
