@@ -1,57 +1,28 @@
-# trino skill
+# trino
 
-Python SQL client for [Trino](https://trino.io/).  
-Install as a skill — the repo root is the skill directory.
+`/trino` slash command for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) —
+execute SQL or natural language queries against [Trino](https://trino.io/).
 
 ## Install
 
 ```bash
-git clone https://github.com/iamyugachang/trino.git \
-    ~/.hermes/skills/data-science/trino
-
-pip install trino
+git clone https://github.com/iamyugachang/trino.git
+cd trino
+./install.sh
 ```
+
+What `install.sh` does:
+1. Copies `scripts/` to `~/.local/share/trino/`
+2. Copies `claude/commands/trino.md` to `~/.claude/commands/trino.md`
+3. Creates `~/.trino.env` from the template (if missing)
+4. Installs the `trino` Python package
 
 ## Setup
 
+Edit your connection settings:
 ```bash
-cp ~/.hermes/skills/data-science/trino/templates/trino.env ~/.trino.env
-nano ~/.trino.env   # fill in TRINO_HOST, TRINO_USER, etc.
+nano ~/.trino.env
 ```
-
-## Usage
-
-```bash
-TRINO=~/.hermes/skills/data-science/trino/scripts/trino
-
-python3 $TRINO "SHOW CATALOGS"
-python3 $TRINO "SELECT * FROM tpch.tiny.nation LIMIT 5"
-python3 $TRINO --format csv --output out.csv "SELECT * FROM tpch.tiny.orders"
-python3 $TRINO --dry-run "DROP TABLE hive.myschema.old"
-python3 $TRINO --limit 100 "SELECT * FROM hive.myschema.huge_table"
-```
-
-| Flag | Description |
-|---|---|
-| `--format` | `markdown` *(default)*, `aligned`, `csv`, `tsv`, `json` |
-| `--output FILE` | Write result to file |
-| `--limit N` | Append `LIMIT N` |
-| `--dry-run` | Print SQL, don't execute |
-| `--env FILE` | Custom `.env` file |
-| `--catalog` / `--schema` | Override catalog / schema |
-| `--file FILE` | Read SQL from file |
-
-## Test with Docker
-
-```bash
-cd ~/.hermes/skills/data-science/trino/docker
-docker compose up -d
-cd ..
-pip install pytest
-pytest tests/ -v   # 18 tests
-```
-
-## `.trino.env` reference
 
 ```bash
 TRINO_HOST=trino.your-company.com
@@ -62,6 +33,39 @@ TRINO_HTTPS=false
 TRINO_VERIFY_SSL=false
 TRINO_CATALOG=hive
 TRINO_SCHEMA=default
+```
+
+## Usage
+
+Restart Claude Code after install, then:
+
+```
+/trino SHOW CATALOGS
+/trino list tables in hive.analytics
+/trino describe table hive.analytics.events
+/trino SELECT * FROM tpch.tiny.nation LIMIT 5
+/trino find tables with a user_id column
+/trino --format csv --output out.csv SELECT * FROM hive.analytics.events
+/trino --dry-run DROP TABLE hive.myschema.old_data
+/trino --limit 100 SELECT * FROM hive.myschema.huge_table
+```
+
+## Test with Docker
+
+Verify the client works before pointing at production:
+
+```bash
+cd docker && docker compose up -d && cd ..
+pip install pytest
+pytest tests/ -v   # 18 tests, ~10s
+```
+
+## Files
+
+```
+~/.claude/commands/trino.md     ← slash command definition (Claude Code reads this)
+~/.local/share/trino/scripts/   ← Python client (called by the command)
+~/.trino.env                    ← your connection settings
 ```
 
 ## License
