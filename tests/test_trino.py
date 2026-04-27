@@ -18,7 +18,7 @@ from pathlib import Path
 
 import pytest
 
-TRINO_BIN = str(Path(__file__).parent.parent / "trino")
+TRINO_BIN = str(Path(__file__).parent.parent / "scripts" / "trino")
 TEST_ENV  = str(Path(__file__).parent / "fixtures" / "trino-docker.env")
 
 
