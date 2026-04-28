@@ -1,8 +1,13 @@
 """pytest: wait for Trino Docker before running tests."""
+import os
 import time
 import json
 import pytest
 import urllib.request
+
+
+# Disable auto-saved markdown copies during tests
+os.environ.setdefault("TRINO_AUTO_SAVE", "0")
 
 
 def wait_for_trino(host="localhost", port=8080, timeout=120):

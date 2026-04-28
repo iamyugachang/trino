@@ -1,10 +1,21 @@
 #!/usr/bin/env python3
-"""Trino client — .env loading, connection, execution, formatting."""
+"""Trino client — .env loading, connection, execution, formatting.
+
+Default behaviour:
+  * Terminal output uses the `aligned` format (human-friendly).
+  * A markdown copy of the result is auto-saved to ./trino-output/<ts>.md
+    (override with --save PATH, disable with --no-save or env TRINO_AUTO_SAVE=0).
+
+Backward compatible flags:
+  --output FILE   write a single file using --format and DO NOT auto-save.
+  --format FMT    change the terminal format (and the --output file format).
+"""
 
 import argparse
 import os
 import sys
 import json
+from datetime import datetime
 from pathlib import Path
 
 
@@ -13,7 +24,7 @@ from pathlib import Path
 def load_env(custom_path=None):
     candidates = []
     if custom_path:
-        candidates.append(Path(custom_path))
+        candidates.append(Path(custom_path).expanduser())
     candidates += [Path(".trino.env"), Path.home() / ".trino.env"]
 
     for path in candidates:
@@ -37,7 +48,7 @@ def get_connection():
     try:
         import trino as _trino
     except ImportError:
-        sys.exit("[trino] error: run  pip install trino")
+        sys.exit("[trino] error: run  python3 -m pip install trino   (or  uv pip install trino)")
 
     host = os.environ.get("TRINO_HOST")
     if not host:
@@ -125,6 +136,20 @@ FORMATTERS = {
 }
 
 
+def build_markdown_doc(sql, rows, cols):
+    """Markdown document with SQL header + result table — for auto-save."""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    body = fmt_markdown(rows, cols) if cols is not None else "*(no result set)*"
+    return (
+        f"# Trino query\n\n"
+        f"**Time:** {ts}  \n"
+        f"**Catalog:** `{os.environ.get('TRINO_CATALOG', '')}`  "
+        f"**Schema:** `{os.environ.get('TRINO_SCHEMA', '')}`\n\n"
+        f"## SQL\n\n```sql\n{sql}\n```\n\n"
+        f"## Result\n\n{body}\n"
+    )
+
+
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -140,13 +165,18 @@ examples:
   ./trino --format json "SELECT nationkey, name FROM tpch.tiny.nation LIMIT 3"
   ./trino --dry-run "DROP TABLE hive.myschema.old_data"
   ./trino --env ~/.trino-staging.env "SHOW SCHEMAS FROM hive"
+  ./trino --no-save "SELECT 1"        # skip auto markdown copy
+  ./trino --save out.md "SELECT 1"    # custom auto-save path
         """,
     )
     parser.add_argument("sql",       nargs="?", help="SQL statement to execute")
     parser.add_argument("--file",    help="Execute SQL from a .sql file")
-    parser.add_argument("--format",  choices=list(FORMATTERS), default="markdown",
-                        help="Output format (default: markdown)")
-    parser.add_argument("--output",  help="Write results to file instead of stdout")
+    parser.add_argument("--format",  choices=list(FORMATTERS), default="aligned",
+                        help="Terminal output format (default: aligned)")
+    parser.add_argument("--output",  help="Write result to FILE in --format and skip auto-save")
+    parser.add_argument("--save",    help="Override auto-save path (default: ./trino-output/<ts>.md)")
+    parser.add_argument("--no-save", action="store_true",
+                        help="Disable the auto markdown copy")
     parser.add_argument("--env",     help="Path to custom .env file")
     parser.add_argument("--catalog", help="Override TRINO_CATALOG")
     parser.add_argument("--schema",  help="Override TRINO_SCHEMA")
@@ -186,19 +216,47 @@ examples:
     except Exception as e:
         sys.exit(f"[trino] error: {e}")
 
-    if cur.description is None:
-        print("[trino] ok: statement executed (no result set)")
-        return
+    rows, cols = [], None
+    if cur.description is not None:
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description]
 
-    rows = cur.fetchall()
-    cols = [d[0] for d in cur.description]
-    result = FORMATTERS[args.format](rows, cols)
-
+    # ── handle --output (single-file mode, no auto-save) ────────────────────
     if args.output:
+        if cols is None:
+            print("[trino] ok: statement executed (no result set)")
+            return
+        result = FORMATTERS[args.format](rows, cols)
         Path(args.output).write_text(result)
         print(f"[trino] ok: {len(rows)} rows written to {args.output}")
+        return
+
+    # ── normal mode: print to terminal ──────────────────────────────────────
+    if cols is None:
+        print("[trino] ok: statement executed (no result set)")
     else:
-        print(result)
+        print(FORMATTERS[args.format](rows, cols))
+
+    # ── auto-save markdown copy ─────────────────────────────────────────────
+    # Explicit --save always wins; otherwise honour --no-save / TRINO_AUTO_SAVE.
+    auto_save_env = os.environ.get("TRINO_AUTO_SAVE", "1").lower() not in ("0", "false", "no")
+    if not args.save:
+        if args.no_save or not auto_save_env:
+            return
+
+    if args.save:
+        save_path = Path(args.save).expanduser()
+    else:
+        out_dir = Path(os.environ.get("TRINO_OUTPUT_DIR", "./trino-output"))
+        out_dir.mkdir(parents=True, exist_ok=True)
+        save_path = out_dir / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S-%f')[:-3]}.md"
+
+    try:
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        save_path.write_text(build_markdown_doc(sql, rows, cols))
+        print(f"[trino] saved to {save_path}", file=sys.stderr)
+    except Exception as e:
+        print(f"[trino] warning: auto-save failed: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

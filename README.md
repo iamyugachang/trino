@@ -1,71 +1,84 @@
-# trino
+# trino skill
 
-`/trino` slash command for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) —
-execute SQL or natural language queries against [Trino](https://trino.io/).
+Natural language + SQL interface to [Trino](https://trino.io/), packaged as both
+a **Claude Code `/trino` slash command** and a **Hermes skill**.
 
-## Install
+Source: https://github.com/iamyugachang/trino
+
+## Quick start
 
 ```bash
 git clone https://github.com/iamyugachang/trino.git
 cd trino
-./install.sh
+./install.sh                    # installs to both Claude Code & Hermes
+$EDITOR ~/.trino.env            # fill in TRINO_HOST / USER / PASSWORD
 ```
 
-What `install.sh` does:
-1. Copies `scripts/` to `~/.local/share/trino/`
-2. Copies `claude/commands/trino.md` to `~/.claude/commands/trino.md`
-3. Creates `~/.trino.env` from the template (if missing)
-4. Installs the `trino` Python package
-
-## Setup
-
-Edit your connection settings:
-```bash
-nano ~/.trino.env
-```
-
-```bash
-TRINO_HOST=trino.your-company.com
-TRINO_PORT=8080
-TRINO_USER=your_username
-TRINO_PASSWORD=
-TRINO_HTTPS=false
-TRINO_VERIFY_SSL=false
-TRINO_CATALOG=hive
-TRINO_SCHEMA=default
-```
-
-## Usage
-
-Restart Claude Code after install, then:
-
+Then in Claude Code:
 ```
 /trino SHOW CATALOGS
-/trino list tables in hive.analytics
-/trino describe table hive.analytics.events
-/trino SELECT * FROM tpch.tiny.nation LIMIT 5
-/trino find tables with a user_id column
-/trino --format csv --output out.csv SELECT * FROM hive.analytics.events
-/trino --dry-run DROP TABLE hive.myschema.old_data
-/trino --limit 100 SELECT * FROM hive.myschema.huge_table
+/trino hive 有幾個 schema
 ```
 
-## Test with Docker
+Or in Hermes: *"use the trino skill to list schemas in hive"*
 
-Verify the client works before pointing at production:
+## Features
+
+- **Slash command + skill trigger** — call `/trino` explicitly or let Claude Code
+  pick the skill from natural-language triggers.
+- **Auto-save** — every query writes a markdown copy to `./trino-output/<ts>.md`.
+- **uv-aware install** — uses `uv pip` when available, falls back to `pip`.
+- **Dual environment** — same client works in Claude Code and Hermes.
+
+## Install targets
+
+```bash
+./install.sh --target claude-code   # /trino slash command + Claude Code skill
+./install.sh --target hermes        # ~/.hermes/skills/data-science/trino
+./install.sh --target both          # default
+```
+
+## Connection
+
+Copy a template and edit:
+```bash
+cp templates/trino.env ~/.trino.env          # production / company
+cp templates/trino.env.docker ~/.trino.env   # local Docker preset
+```
+
+| Variable | Default |
+|---|---|
+| `TRINO_HOST` | (required) |
+| `TRINO_PORT` | 8080 |
+| `TRINO_USER` | `$USER` |
+| `TRINO_PASSWORD` | (none) |
+| `TRINO_HTTPS` | false |
+| `TRINO_VERIFY_SSL` | true |
+| `TRINO_CATALOG` | tpch |
+| `TRINO_SCHEMA` | tiny |
+
+## Flags
+
+| Flag | Description |
+|---|---|
+| `--format` | `aligned` *(default)*, `markdown`, `csv`, `tsv`, `json` |
+| `--save FILE` | Override auto-save markdown path |
+| `--no-save` | Skip auto-save |
+| `--output FILE` | Write `--format` to FILE (and skip auto-save) |
+| `--limit N` | Append `LIMIT N` |
+| `--dry-run` | Print SQL only |
+| `--env FILE` | Use a different `.env` |
+| `--catalog` / `--schema` | Override |
+| `--file FILE` | Read SQL from a file |
+
+## Test
+
+See [`TESTING.md`](TESTING.md) for the three-environment checklist.
 
 ```bash
 cd docker && docker compose up -d && cd ..
-pip install pytest
-pytest tests/ -v   # 18 tests, ~10s
-```
-
-## Files
-
-```
-~/.claude/commands/trino.md     ← slash command definition (Claude Code reads this)
-~/.local/share/trino/scripts/   ← Python client (called by the command)
-~/.trino.env                    ← your connection settings
+python3 -m pip install pytest
+python3 -m pytest tests/ -v
 ```
 
 ## License

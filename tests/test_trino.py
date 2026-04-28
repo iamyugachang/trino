@@ -59,8 +59,8 @@ class TestQueries:
         r = run("SELECT nationkey, name FROM tpch.tiny.nation ORDER BY nationkey",
                 ["--limit", "5"])
         assert r.returncode == 0, r.stderr
-        rows = [l for l in r.stdout.splitlines() if "|" in l and "---" not in l]
-        assert len(rows) >= 5  # header + 5 data rows (markdown)
+        # Default format is `aligned`; expect 5 data rows + header + separators
+        assert "(5 rows)" in r.stdout
 
     def test_describe_table(self):
         r = run("DESCRIBE tpch.tiny.nation")
@@ -113,6 +113,41 @@ class TestFormats:
         assert "nationkey,name" in Path(out).read_text()
 
 
+# ── auto-save markdown copy ───────────────────────────────────────────────────
+
+class TestAutoSave:
+    def test_save_to_custom_path(self, tmp_path):
+        out = tmp_path / "result.md"
+        r = run(SQL3, ["--save", str(out)])
+        assert r.returncode == 0, r.stderr
+        text = out.read_text()
+        assert "# Trino query" in text
+        assert "## SQL" in text
+        assert "## Result" in text
+        assert "nationkey" in text
+
+    def test_no_save_skips_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        # Re-enable auto-save for this test (conftest disables it globally)
+        env = {**os.environ, "TRINO_AUTO_SAVE": "1"}
+        cmd = [sys.executable, TRINO_BIN, "--env", TEST_ENV, "--no-save", SQL3]
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        assert r.returncode == 0, r.stderr
+        assert not (tmp_path / "trino-output").exists()
+
+    def test_default_auto_save_creates_dir(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        env = {**os.environ, "TRINO_AUTO_SAVE": "1"}
+        cmd = [sys.executable, TRINO_BIN, "--env", TEST_ENV, SQL3]
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        assert r.returncode == 0, r.stderr
+        out_dir = tmp_path / "trino-output"
+        assert out_dir.exists()
+        files = list(out_dir.glob("*.md"))
+        assert len(files) == 1
+        assert "# Trino query" in files[0].read_text()
+
+
 # ── dry-run ───────────────────────────────────────────────────────────────────
 
 class TestDryRun:
@@ -161,10 +196,13 @@ class TestErrors:
         r = run("SELEKT * FORM nation")
         assert r.returncode != 0
 
-    def test_missing_host(self):
+    def test_missing_host(self, tmp_path):
+        # Use an empty env file to ensure ~/.trino.env isn't picked up
+        empty_env = tmp_path / "empty.env"
+        empty_env.write_text("")
         env = {k: v for k, v in os.environ.items() if k != "TRINO_HOST"}
         r = subprocess.run(
-            [sys.executable, TRINO_BIN, "SELECT 1"],
+            [sys.executable, TRINO_BIN, "--env", str(empty_env), "SELECT 1"],
             capture_output=True, text=True, env=env,
         )
         assert r.returncode != 0
